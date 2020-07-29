@@ -9,7 +9,6 @@ package tests
 
 import (
 	"bytes"
-	"go/build"
 	"io/ioutil"
 	"os"
 	"path"
@@ -75,11 +74,6 @@ func TestConfig(t *testing.T) {
 	tmpl, err := template.New("test_config").Parse(testConfig)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	gopath := os.Getenv("GOPATH")
-	if gopath == "" {
-		gopath = build.Default.GOPATH
 	}
 
 	root, err := ioutil.TempDir("", "test-secagent-root")

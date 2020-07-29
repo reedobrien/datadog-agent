@@ -14,13 +14,12 @@ struct bpf_map_def SEC("maps/unlink_path_inode_discarders") unlink_path_inode_di
 };
 
 struct unlink_event_t {
-    struct event_t event;
+    struct kevent_t event;
     struct process_data_t process;
-    unsigned long inode;
-    int mount_id;
-    int overlay_numlower;
-    int flags;
-    int padding;
+    struct syscall_t syscall;
+    struct file_t file;
+    u32 flags;
+    u32 padding;
 };
 
 int __attribute__((always_inline)) trace__sys_unlink(int flags) {
@@ -90,12 +89,16 @@ int __attribute__((always_inline)) trace__sys_unlink_ret(struct pt_regs *ctx) {
         return 0;
 
     struct unlink_event_t event = {
-        .event.retval = PT_REGS_RC(ctx),
         .event.type = EVENT_UNLINK,
-        .event.timestamp = bpf_ktime_get_ns(),
-        .mount_id = syscall->unlink.path_key.mount_id,
-        .inode = syscall->unlink.path_key.ino,
-        .overlay_numlower = syscall->unlink.overlay_numlower,
+        .syscall = {
+            .retval = retval,
+            .timestamp = bpf_ktime_get_ns(),
+        },
+        .file = {
+            .mount_id = syscall->unlink.path_key.mount_id,
+            .inode = syscall->unlink.path_key.ino,
+            .overlay_numlower = syscall->unlink.overlay_numlower,
+        },
         .flags = syscall->unlink.flags,
     };
 

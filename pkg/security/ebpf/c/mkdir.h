@@ -4,13 +4,12 @@
 #include "syscalls.h"
 
 struct mkdir_event_t {
-    struct event_t event;
+    struct kevent_t event;
     struct process_data_t process;
-    int mode;
-    int mount_id;
-    unsigned long inode;
-    int overlay_numlower;
-    int padding;
+    struct syscall_t syscall;
+    struct file_t file;
+    u32 mode;
+    u32 padding;
 };
 
 int __attribute__((always_inline)) trace__sys_mkdir(struct pt_regs *ctx, umode_t mode) {
@@ -69,16 +68,24 @@ int __attribute__((always_inline)) trace__sys_mkdir_ret(struct pt_regs *ctx) {
     if (!syscall)
         return 0;
 
+    int retval = PT_REGS_RC(ctx);
+    if (IS_UNHANDLED_ERROR(retval))
+        return 0;
+
     // the inode of the dentry was not properly set when kprobe/security_path_mkdir was called, make sur we grab it now
     syscall->mkdir.path_key.ino = get_dentry_ino(syscall->mkdir.dentry);
     struct mkdir_event_t event = {
-        .event.retval = PT_REGS_RC(ctx),
         .event.type = EVENT_MKDIR,
-        .event.timestamp = bpf_ktime_get_ns(),
+        .syscall = {
+            .retval = retval,
+            .timestamp = bpf_ktime_get_ns(),
+        },
+        .file = {
+            .inode = syscall->mkdir.path_key.ino,
+            .mount_id = syscall->mkdir.path_key.mount_id,
+            .overlay_numlower = get_overlay_numlower(syscall->mkdir.dentry),
+        },
         .mode = syscall->mkdir.mode,
-        .mount_id = syscall->mkdir.path_key.mount_id,
-        .inode = syscall->mkdir.path_key.ino,
-        .overlay_numlower = get_overlay_numlower(syscall->mkdir.dentry),
     };
 
     fill_process_data(&event.process);

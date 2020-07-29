@@ -10,17 +10,14 @@
 */
 
 struct utime_event_t {
-    struct event_t event;
+    struct kevent_t event;
     struct process_data_t process;
+    struct syscall_t syscall;
+    struct file_t file;
     struct {
         long tv_sec;
         long tv_usec;
     } atime, mtime;
-    u32 padding;
-    int mount_id;
-    unsigned long inode;
-    int overlay_numlower;
-    u32 padding2;
 };
 
 int __attribute__((always_inline)) trace__sys_utimes() {
@@ -57,10 +54,16 @@ int __attribute__((always_inline)) trace__sys_utimes_ret(struct pt_regs *ctx) {
     if (!syscall)
         return 0;
 
+    int retval = PT_REGS_RC(ctx);
+    if (IS_UNHANDLED_ERROR(retval))
+        return 0;
+
     struct utime_event_t event = {
-        .event.retval = PT_REGS_RC(ctx),
         .event.type = EVENT_UTIME,
-        .event.timestamp = bpf_ktime_get_ns(),
+        .syscall = {
+            .retval = retval,
+            .timestamp = bpf_ktime_get_ns(),
+        },
         .atime = {
             .tv_sec = syscall->setattr.atime.tv_sec,
             .tv_usec = syscall->setattr.atime.tv_nsec,
@@ -69,9 +72,11 @@ int __attribute__((always_inline)) trace__sys_utimes_ret(struct pt_regs *ctx) {
             .tv_sec = syscall->setattr.mtime.tv_sec,
             .tv_usec = syscall->setattr.mtime.tv_nsec,
         },
-        .mount_id = syscall->setattr.path_key.mount_id,
-        .inode = syscall->setattr.path_key.ino,
-        .overlay_numlower = get_overlay_numlower(syscall->setattr.dentry),
+        .file = {
+            .inode = syscall->setattr.path_key.ino,
+            .mount_id = syscall->setattr.path_key.mount_id,
+            .overlay_numlower = get_overlay_numlower(syscall->setattr.dentry),
+        },
     };
 
     fill_process_data(&event.process);

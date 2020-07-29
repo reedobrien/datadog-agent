@@ -61,13 +61,12 @@ struct bpf_map_def SEC("maps/open_path_inode_discarders") open_path_inode_discar
 };
 
 struct open_event_t {
-    struct event_t event;
+    struct kevent_t event;
     struct process_data_t process;
-    int flags;
-    int mode;
-    unsigned long inode;
-    int mount_id;
-    int overlay_numlower;
+    struct syscall_t syscall;
+    struct file_t file;
+    u32 flags;
+    u32 mode;
 };
 
 int __attribute__((always_inline)) trace__sys_openat(int flags, umode_t mode) {
@@ -234,14 +233,18 @@ int __attribute__((always_inline)) trace__sys_open_ret(struct pt_regs *ctx) {
         return 0;
 
     struct open_event_t event = {
-        .event.retval = retval,
         .event.type = EVENT_OPEN,
-        .event.timestamp = bpf_ktime_get_ns(),
+        .syscall = {
+            .retval = retval,
+            .timestamp = bpf_ktime_get_ns(),
+        },
+        .file = {
+            .inode = syscall->open.path_key.ino,
+            .mount_id = syscall->open.path_key.mount_id,
+            .overlay_numlower = get_overlay_numlower(syscall->open.dentry),
+        },
         .flags = syscall->open.flags,
         .mode = syscall->open.mode,
-        .mount_id = syscall->open.path_key.mount_id,
-        .inode = syscall->open.path_key.ino,
-        .overlay_numlower = get_overlay_numlower(syscall->open.dentry),
     };
 
     fill_process_data(&event.process);

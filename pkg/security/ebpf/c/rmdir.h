@@ -4,11 +4,10 @@
 #include "syscalls.h"
 
 struct rmdir_event_t {
-    struct event_t event;
+    struct kevent_t event;
     struct process_data_t process;
-    unsigned long inode;
-    int mount_id;
-    int overlay_numlower;
+    struct syscall_t syscall;
+    struct file_t file;
 };
 
 SYSCALL_KPROBE(rmdir) {
@@ -69,12 +68,16 @@ SYSCALL_KRETPROBE(rmdir) {
         return 0;
 
     struct rmdir_event_t event = {
-        .event.retval = PT_REGS_RC(ctx),
         .event.type = EVENT_RMDIR,
-        .event.timestamp = bpf_ktime_get_ns(),
-        .inode = syscall->rmdir.path_key.ino,
-        .mount_id = syscall->rmdir.path_key.mount_id,
-        .overlay_numlower = syscall->rmdir.overlay_numlower,
+        .syscall = {
+            .retval = retval,
+            .timestamp = bpf_ktime_get_ns(),
+        },
+        .file = {
+            .inode = syscall->rmdir.path_key.ino,
+            .mount_id = syscall->rmdir.path_key.mount_id,
+            .overlay_numlower = syscall->rmdir.overlay_numlower,
+        }
     };
 
     fill_process_data(&event.process);

@@ -4,12 +4,11 @@
 #include "syscalls.h"
 
 struct chmod_event_t {
-    struct event_t event;
+    struct kevent_t event;
     struct process_data_t process;
-    int mode;
-    int mount_id;
-    unsigned long inode;
-    int overlay_numlower;
+    struct syscall_t syscall;
+    struct file_t file;
+    u32 mode;
     u32 padding;
 };
 
@@ -64,14 +63,23 @@ int __attribute__((always_inline)) trace__sys_chmod_ret(struct pt_regs *ctx) {
     if (!syscall)
         return 0;
 
+    int retval = PT_REGS_RC(ctx);
+    if (IS_UNHANDLED_ERROR(retval))
+        return 0;
+
     struct chmod_event_t event = {
-        .event.retval = PT_REGS_RC(ctx),
         .event.type = EVENT_CHMOD,
-        .event.timestamp = bpf_ktime_get_ns(),
+        .syscall = {
+            .retval = retval,
+            .timestamp = bpf_ktime_get_ns(),
+        },
+        .file = {
+            .mount_id = syscall->setattr.path_key.mount_id,
+            .inode = syscall->setattr.path_key.ino,
+            .overlay_numlower = get_overlay_numlower(syscall->setattr.dentry),
+        },
+        .padding = 0,
         .mode = syscall->setattr.mode,
-        .mount_id = syscall->setattr.path_key.mount_id,
-        .inode = syscall->setattr.path_key.ino,
-        .overlay_numlower = get_overlay_numlower(syscall->setattr.dentry),
     };
 
     fill_process_data(&event.process);

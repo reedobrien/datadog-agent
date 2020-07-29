@@ -4,15 +4,12 @@
 #include "syscalls.h"
 
 struct chown_event_t {
-    struct event_t event;
+    struct kevent_t event;
     struct process_data_t process;
+    struct syscall_t syscall;
+    struct file_t file;
     uid_t user;
     gid_t group;
-    u32 padding;
-    int mount_id;
-    unsigned long inode;
-    int overlay_numlower;
-    u32 padding2;
 };
 
 int __attribute__((always_inline)) trace__sys_chown(struct pt_regs *ctx, uid_t user, gid_t group) {
@@ -91,15 +88,23 @@ int __attribute__((always_inline)) trace__sys_chown_ret(struct pt_regs *ctx) {
     if (!syscall)
         return 0;
 
+    int retval = PT_REGS_RC(ctx);
+    if (IS_UNHANDLED_ERROR(retval))
+        return 0;
+
     struct chown_event_t event = {
-        .event.retval = PT_REGS_RC(ctx),
         .event.type = EVENT_CHOWN,
-        .event.timestamp = bpf_ktime_get_ns(),
+        .syscall = {
+            .retval = retval,
+            .timestamp = bpf_ktime_get_ns(),
+        },
+        .file = {
+            .inode = syscall->setattr.path_key.ino,
+            .mount_id = syscall->setattr.path_key.mount_id,
+            .overlay_numlower = get_overlay_numlower(syscall->setattr.dentry),
+        },
         .user = syscall->setattr.user,
         .group = syscall->setattr.group,
-        .mount_id = syscall->setattr.path_key.mount_id,
-        .inode = syscall->setattr.path_key.ino,
-        .overlay_numlower = get_overlay_numlower(syscall->setattr.dentry),
     };
 
     fill_process_data(&event.process);

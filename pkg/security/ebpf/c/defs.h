@@ -46,6 +46,21 @@ struct event_t {
     s64 retval;
 };
 
+struct kevent_t {
+    u64 type;
+};
+
+struct file_t {
+    unsigned long inode;
+    int mount_id;
+    int overlay_numlower;
+};
+
+struct syscall_t {
+    u64 timestamp;
+    s64 retval;
+};
+
 struct process_data_t {
     // Process data
     u64  pidns;
