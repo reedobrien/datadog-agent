@@ -15,8 +15,22 @@ import (
 	"path/filepath"
 	"unsafe"
 
+	"github.com/DataDog/datadog-agent/pkg/logs/input/windowsevent"
+	"github.com/DataDog/datadog-agent/pkg/util/log"
 	"github.com/DataDog/datadog-agent/pkg/util/winutil"
 	"golang.org/x/sys/windows"
+)
+
+var (
+	modWinEvtAPI     = windows.NewLazySystemDLL("wevtapi.dll")
+	procEvtExportLog = modWinEvtAPI.NewProc("EvtExportLog")
+)
+
+const (
+	evtExportLogChannelPath         uint32 = 0x1
+	evtExportLogFilePath            uint32 = 0x2
+	evtExportLogTolerateQueryErrors uint32 = 0x1000
+	evtExportLogOverwrite           uint32 = 0x2000
 )
 
 func zipCounterStrings(tempDir, hostname string) error {
@@ -80,6 +94,76 @@ func zipTypeperfData(tempDir, hostname string) error {
 		return err
 	}
 	return nil
+}
+
+// zipWindowsEventLogs exports all the Windows event logs.
+func zipWindowsEventLogs(tempDir, hostname string) error {
+	// Enumerate all event channels registered.
+	eventLogChannels, err := windowsevent.EnumerateChannels()
+
+	if err != nil {
+		log.Warnf("could not list windows event log channels: %v", err)
+		return err
+	}
+
+	log.Infof("found event log channels: %v", eventLogChannels)
+
+	for _, eventLogChannel := range eventLogChannels {
+		eventLogFileName := eventLogChannel + ".evtx"
+
+		// Export one event log file to the temporary location.
+		errExport := exportWindowsEventLog(
+			eventLogChannel,
+			eventLogFileName,
+			tempDir,
+			hostname)
+
+		if errExport != nil {
+			// It is expected that some operation might fail because agent.exe service does not
+			// have permission to export from some channels. Do not report this error to the caller.
+			log.Warnf("could not export event log %v, error: %v", eventLogChannel, errExport)
+		}
+	}
+
+	return err
+}
+
+// exportWindowsEventLog exports one event log file to the temporary location.
+// destFileName might contain a path.
+func exportWindowsEventLog(eventLogChannel, destFileName, tempDir, hostname string) error {
+	// Put all event logs under "eventlog" folder
+	destFullFileName := filepath.Join(tempDir, hostname, "eventlog", destFileName)
+
+	err := ensureParentDirsExist(destFullFileName)
+	if err != nil {
+		log.Warnf("cannot create folder for %s: %v", destFullFileName, err)
+		return err
+	}
+
+	eventLogChannelUtf16, _ := windows.UTF16PtrFromString(eventLogChannel)
+	destFullFileNameUtf16, _ := windows.UTF16PtrFromString(destFullFileName)
+
+	ret, _, evtExportLogError := procEvtExportLog.Call(
+		uintptr(unsafe.Pointer(nil)),                   // Machine name, NULL for local machine
+		uintptr(unsafe.Pointer(eventLogChannelUtf16)),  // Channel name
+		uintptr(unsafe.Pointer(nil)),                   // Query, NULL for all entries
+		uintptr(unsafe.Pointer(destFullFileNameUtf16)), // Destination file name
+		uintptr(evtExportLogChannelPath))               // DWORD. Specify that the second parameter is a channel name
+
+	// ret is a DWORD, TRUE for success, FALSE for failure.
+	if ret == 0 {
+		log.Warnf(
+			"could not export event log from channel %s to file %s, LastError: %v",
+			eventLogChannel,
+			destFullFileName,
+			evtExportLogError)
+
+		err = evtExportLogError
+	} else {
+		log.Infof("successfully exported event channel %v to %v", eventLogChannel, destFullFileName)
+	}
+
+	return err
 }
 
 func (p permissionsInfos) add(filePath string) {}
