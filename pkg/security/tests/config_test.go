@@ -9,9 +9,7 @@ package tests
 
 import (
 	"bytes"
-	"fmt"
 	"go/build"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -21,6 +19,57 @@ import (
 	aconfig "github.com/DataDog/datadog-agent/pkg/config"
 	"github.com/DataDog/datadog-agent/pkg/security/module"
 )
+
+var defaultPolicy = `---
+version: 1.0.0
+rules:
+  - id: credential_modified
+    description: credential files modified using unknown tool
+    expression: >-
+      (open.filename == "/etc/shadow" || open.filename == "/etc/gshadow") &&
+      process.name not in ["vipw", "vigr"]
+    tags:
+      mitre: T1003
+  - id: memory_dump
+    description: memory dump
+    expression: >-
+      open.filename =~ "/proc/*" && open.basename in ["maps", "mem"]
+    tags:
+      mitre: T1003
+  - id: logs_altered
+    description: log entries removed
+    expression: >-
+      (open.filename =~ "/var/log/*" && open.flags & O_TRUNC > 0)
+    tags:
+      mitre: T1070
+  - id: logs_removed
+    description: log entries removed
+    expression: >-
+      unlink.filename =~ "/var/log/*"
+    tags:
+      mitre: T1070
+  - id: permissions_changed
+    description: permissions change on sensible files
+    expression: >-
+      chmod.filename =~ "/etc/*" || chmod.filename =~ "/etc/*" ||
+      chmod.filename =~ "/sbin/*" || chmod.filename =~ "/usr/sbin/*" ||
+      chmod.filename =~ "/usr/local/sbin*" || chmod.filename =~ "/usr/bin/local/*" ||
+      chmod.filename =~ "/var/log/*" || chmod.filename =~ "/usr/lib/*"
+    tags:
+      mitre: T1099
+  - id: hidden_file
+    description: hidden file creation
+    expression: >-
+      open.basename =~ ".*" && open.flags & O_CREAT > 0
+    tags:
+      mitre: T1158
+  - id: kernel_module
+    description: new file in kernel module location
+    expression: >-
+      open.filename =~ "/lib/modules/*" && open.flags & O_CREAT > 0
+    tags:
+      mitre: T1215
+`
 
 func TestConfig(t *testing.T) {
 	tmpl, err := template.New("test_config").Parse(testConfig)
@@ -33,27 +82,13 @@ func TestConfig(t *testing.T) {
 		gopath = build.Default.GOPATH
 	}
 
-	defaultPolicy, err := os.Open(fmt.Sprintf("%s/src/github.com/DataDog/datadog-agent/cmd/agent/dist/conf.d/runtime_security_agent.d/default.policy", gopath))
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	root, err := ioutil.TempDir("", "test-secagent-root")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(root)
 
-	testDefaultPolicy, err := os.Create(path.Join(root, "default.policy"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := io.Copy(testDefaultPolicy, defaultPolicy); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := testDefaultPolicy.Close(); err != nil {
+	if err := ioutil.WriteFile(path.Join(root, "default.policy"), []byte(defaultPolicy), 0644); err != nil {
 		t.Fatal(err)
 	}
 
