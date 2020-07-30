@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -24,8 +25,13 @@ import (
 	"github.com/DataDog/datadog-go/statsd"
 )
 
-// MetricPrefix is the prefix of the metrics sent by the runtime security agent
-const MetricPrefix = "datadog.agent.runtime_security"
+const (
+	// MetricPrefix is the prefix of the metrics sent by the runtime security agent
+	MetricPrefix = "datadog.agent.runtime_security"
+
+	// number of eBPF program load retry
+	maxLoadRetry = 3
+)
 
 // EventHandler represents an handler for the events sent by the probe
 type EventHandler interface {
@@ -413,7 +419,15 @@ func (p *Probe) Start() error {
 		return err
 	}
 
-	if err := p.Load(); err != nil {
+	// retrying to load eBPF program
+	for i := 0; i != maxLoadRetry; i++ {
+		if err = p.Load(); err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	if err != nil {
 		return err
 	}
 
