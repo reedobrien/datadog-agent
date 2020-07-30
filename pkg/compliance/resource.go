@@ -30,6 +30,8 @@ const (
 	KindAudit = ResourceKind("audit")
 	// KindKubernetes is used for a KubernetesResource
 	KindKubernetes = ResourceKind("kubernetes")
+	// KindCustom is used for a Custom check
+	KindCustom = ResourceKind("custom")
 )
 
 // Resource describes supported resource types observed by a Rule
@@ -41,6 +43,7 @@ type Resource struct {
 	Audit         *Audit              `yaml:"audit,omitempty"`
 	Docker        *DockerResource     `yaml:"docker,omitempty"`
 	KubeApiserver *KubernetesResource `yaml:"kubeApiserver,omitempty"`
+	Custom        *Custom             `yaml:"custom,omitempty"`
 	Condition     string              `yaml:"condition"`
 }
 
@@ -61,6 +64,8 @@ func (r *Resource) Kind() ResourceKind {
 		return KindDocker
 	case r.KubeApiserver != nil:
 		return KindKubernetes
+	case r.Custom != nil:
+		return KindCustom
 	default:
 		return KindInvalid
 	}
@@ -162,4 +167,10 @@ func (a *Audit) Validate() error {
 // DockerResource describes a resource from docker daemon
 type DockerResource struct {
 	Kind string `yaml:"kind"`
+}
+
+// Custom is a special resource handlded by dedicated, custom, functions
+type Custom struct {
+	Name      string            `yaml:"name"`
+	Variables map[string]string `yaml:"variables,omitempty"`
 }
