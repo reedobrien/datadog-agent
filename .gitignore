@@ -116,8 +116,8 @@ tools/windows/install-help/cal/packages/
 [Dd]ebug/
 [Rr]elease/
 
-# ebpf object files
-pkg/ebpf/c/*.o
+# ebpf bindata files
+pkg/ebpf/bytecode/tracer-ebpf.go
 
 # windows container build output
 build.out/
