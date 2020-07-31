@@ -479,7 +479,7 @@ def reset(ctx):
 
 
 @task
-def generate(ctx):
+def generate(ctx, build_tags=""):
     """
     Run go generate required package
     """
