@@ -8,7 +8,7 @@ package network
 #include <WinIoCtl.h>
 
 //! Defines the objects used to communicate with the driver as well as its control codes
-#include "../ebpf/c/ddfilterapi.h"
+#include "ddfilterapi.h"
 */
 import "C"
 import (
